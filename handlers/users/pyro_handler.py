@@ -11,7 +11,8 @@ from hydrogram.errors import (AuthKeyUnregistered, BadRequest,
                               PhoneCodeExpired, PhoneCodeInvalid,
                               PhoneNumberBanned, PhoneNumberInvalid,
                               SessionPasswordNeeded, Unauthorized, UserPrivacyRestricted, UserDeactivated,
-                              UsernameInvalid, UsernameNotOccupied, UserKicked, UserChannelsTooMuch, PeerFlood)
+                              UsernameInvalid, UsernameNotOccupied, UserKicked, UserChannelsTooMuch, PeerFlood,
+                              UserBannedInChannel)
 from hydrogram.types import User
 
 from data.config import (API_HASH, API_ID, app_version,
@@ -328,7 +329,7 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
             return 4
         except (UserChannelsTooMuch, UserPrivacyRestricted, UsernameInvalid, UsernameNotOccupied, UserKicked) as e:
             pass
-        except (AuthKeyUnregistered, UserDeactivated):
+        except (AuthKeyUnregistered, UserDeactivated, UserBannedInChannel):
             await context.del_account(number)
             return 4
 

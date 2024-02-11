@@ -69,11 +69,16 @@ async def do_start(message: types.Message, state: FSMContext, context: DbContext
 async def del_handler(message: types.Message, context: DbContext):
     if message.text:
         try:
-            await context.del_account(message.text)
+            account_number = message.text.split()[1]
+            await context.del_account(account_number)
+            await bot.delete_message(message.from_user.id, message.message_id)
+        except IndexError:
+            print("IndexError: No account number provided")
             await bot.delete_message(message.from_user.id, message.message_id)
         except Exception as e:
-            print(e)
+            print(f"Error occurred while deleting account: {e}")
             await bot.delete_message(message.from_user.id, message.message_id)
+
 
 
 @router.message(F.text, Command("check"))
