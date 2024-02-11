@@ -1,3 +1,4 @@
+import asyncio
 from datetime import timedelta, datetime
 
 from aiogram import Router, types
@@ -277,24 +278,18 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
 
     try:
         dest_chat_info = await client.get_chat(dest_chat)
-    except (UserDeactivated, PeerFlood) as e:
-        print(e)
-        # await bot.send_message(6297730838, f'acc {number} excepted with: {e}')
+    except (AuthKeyUnregistered, UserDeactivated):
         await context.del_account(number)
         return 4
-    except Exception as e:
-        print(e)
+    except Exception:
         await context.update_account_status('free', number)
         return 1
     try:
         target_chat_info = await client.get_chat(target_chat)
-    except (UserDeactivated, PeerFlood) as e:
-        print(e)
-        # await bot.send_message(6297730838, f'acc {number} excepted with: {e}')
+    except UserDeactivated:
         await context.del_account(number)
         return 4
-    except Exception as e:
-        print(e)
+    except Exception:
         await context.update_account_status('free', number)
         return 2
     await client.join_chat(dest_chat)
@@ -307,7 +302,7 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
     members = [member.user.id
                async for member in client.get_chat_members(dest_chat_info.id)
                if not member.user.is_bot
-               and member.status in [UserStatus.LAST_MONTH, UserStatus.LONG_AGO]
+               and member.user.status in [UserStatus.LAST_MONTH, UserStatus.LONG_AGO]
                and not member.user.is_deleted]
     await edit_msg(context,
                    telegram_id, mes_id,
@@ -316,6 +311,7 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
                    f"Количество аккаунтов которые ограничены: {bad}", )
     for member in members:
         try:
+            await asyncio.sleep(5)
             added = await client.add_chat_members(target_chat_info.id, member)
             if added:
                 await edit_msg(context,
@@ -327,12 +323,12 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
             restriction_time = datetime.now() + timedelta(seconds=e.value)
             await context.update_account_status_time('bad', restriction_time, number)
             return 4
+        except PeerFlood:
+            await context.update_account_status('free', number)
+            return 4
         except (UserChannelsTooMuch, UserPrivacyRestricted, UsernameInvalid, UsernameNotOccupied, UserKicked) as e:
-            print(e)
             pass
-        except (UserDeactivated, PeerFlood) as e:
-            print(e)
-            # await bot.send_message(6297730838, f'acc {number} excepted with: {e}')
+        except (AuthKeyUnregistered, UserDeactivated):
             await context.del_account(number)
             return 4
 
@@ -363,6 +359,7 @@ async def task_handler(context: DbContext, telegram_id: int, message_id: int, so
     while status:
         numbers = await context.get_free_accounts()
         if not numbers:
+            await context.update_task_status(telegram_id, False)
             await edit_msg(context, telegram_id, message_id, 'Нет доступных аккаунтов, добавьте пожалуйста')
             break
         for number in numbers:

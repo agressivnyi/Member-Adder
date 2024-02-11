@@ -45,28 +45,24 @@ async def do_start(message: types.Message, state: FSMContext, context: DbContext
     await bot.delete_message(telegram_id, message.message_id)
     mes = await bot.send_message(telegram_id, '...', reply_markup=ReplyKeyboardRemove())
     await bot.delete_message(telegram_id, mes.message_id)
-    try:
-        for i in range(message.message_id, 0, -1):
-            await bot.delete_message(message.from_user.id, i)
-    except TelegramBadRequest:
-        if user:
-            if await context.user_has_auth_key(telegram_id) or str(telegram_id) in ADMINS:
-                msg = await bot.send_message(telegram_id,
-                                             f'Здравствуйте, <b>{message.from_user.full_name}!</b>',
-                                             parse_mode=ParseMode.HTML,
-                                             reply_markup=await get_main(telegram_id))
-                await context.update_message_id(msg.message_id, telegram_id)
-            else:
-                await state.set_state(SessionCreation.ask_access_code)
-                msg = await bot.send_message(chat_id=telegram_id,
-                                             text=f'Привет, {message.from_user.full_name}!\n'
-                                                  '‼️Для того чтобы пользоваться функциями бота введите код разрешения:\n\n'
-                                                  'А чтобы получить код разрешения обратитесь к администратору✍️\n\n'
-                                                  f'{ADMIN_LINK}\n\n'
-                                                  'Если вы уже зарегистрированы и хотите восстановить подписку, '
-                                                  'то введите код, который выдал вам бот:',
-                                             parse_mode=ParseMode.HTML)
-                await context.update_message_id(msg.message_id, telegram_id)
+    if user:
+        if await context.user_has_auth_key(telegram_id) or str(telegram_id) in ADMINS:
+            msg = await bot.send_message(telegram_id,
+                                         f'Здравствуйте, <b>{message.from_user.full_name}!</b>',
+                                         parse_mode=ParseMode.HTML,
+                                         reply_markup=await get_main(telegram_id))
+            await context.update_message_id(msg.message_id, telegram_id)
+        else:
+            await state.set_state(SessionCreation.ask_access_code)
+            msg = await bot.send_message(chat_id=telegram_id,
+                                         text=f'Привет, {message.from_user.full_name}!\n'
+                                              '‼️Для того чтобы пользоваться функциями бота введите код разрешения:\n\n'
+                                              'А чтобы получить код разрешения обратитесь к администратору✍️\n\n'
+                                              f'{ADMIN_LINK}\n\n'
+                                              'Если вы уже зарегистрированы и хотите восстановить подписку, '
+                                              'то введите код, который выдал вам бот:',
+                                         parse_mode=ParseMode.HTML)
+            await context.update_message_id(msg.message_id, telegram_id)
 
 
 @router.message(F.text, Command("del"))
