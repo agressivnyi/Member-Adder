@@ -113,7 +113,7 @@ class DbContext:
                 await self.check_restriction_time(account)
                 status = 'в спаме'
             result += f"<b>{number}</b>  <i>{status}</i> {formatted_time}\n"
-        if len(result) == len("Список\n"):
+        if len(result) == len("<b>Список</b>\n\n"):
             return "<b>Вы ещё не добавили</b>"
         else:
             return result
