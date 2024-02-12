@@ -25,7 +25,7 @@ router = Router()
 
 
 @router.callback_query(lambda c: c.data.startswith('gen_'))
-async def select_lang(callback_query: types.CallbackQuery, context: DbContext):
+async def select_gen(callback_query: types.CallbackQuery, context: DbContext):
     telegram_id = callback_query.from_user.id
     await context.update_message_id(callback_query.message.message_id, telegram_id)
     gen = str(callback_query.data.split('_')[
