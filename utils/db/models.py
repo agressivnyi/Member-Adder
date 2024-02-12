@@ -42,3 +42,10 @@ class Accounts(Base):
     hash_value = Column(String(255), nullable=False)
     status = Column(String(255), default='free')
     restriction_time = Column(DateTime, default=None)
+
+
+class Blacklist(Base):
+    __tablename__ = 'blacklist'
+
+    id = Column(Integer, primary_key=True)
+    telegram_id = Column(BigInteger, unique=True, nullable=False)

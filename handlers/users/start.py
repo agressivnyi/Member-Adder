@@ -3,10 +3,8 @@ import asyncio
 from aiogram import Router, types, F
 from aiogram.client.session.middlewares.request_logging import logger
 from aiogram.enums.parse_mode import ParseMode
-from aiogram.exceptions import TelegramBadRequest
 from aiogram.filters import CommandStart, Command
 from aiogram.fsm.context import FSMContext
-from aiogram.types import ReplyKeyboardRemove
 
 from data.config import ADMINS, ADMIN_LINK
 from keyboards.inline.buttons import get_main
@@ -28,7 +26,7 @@ async def check_accounts(context: DbContext):
 
 
 async def start_checking(context: DbContext):
-    task = asyncio.create_task(check_accounts(context))
+    await asyncio.create_task(check_accounts(context))
 
 
 @router.message(CommandStart())
@@ -43,8 +41,6 @@ async def do_start(message: types.Message, state: FSMContext, context: DbContext
         logger.info(error)
     await state.clear()
     await bot.delete_message(telegram_id, message.message_id)
-    mes = await bot.send_message(telegram_id, '...', reply_markup=ReplyKeyboardRemove())
-    await bot.delete_message(telegram_id, mes.message_id)
     if user:
         if await context.user_has_auth_key(telegram_id) or str(telegram_id) in ADMINS:
             msg = await bot.send_message(telegram_id,
@@ -73,12 +69,24 @@ async def del_handler(message: types.Message, context: DbContext):
             await context.del_account(account_number)
             await bot.delete_message(message.from_user.id, message.message_id)
         except IndexError:
-            print("IndexError: No account number provided")
             await bot.delete_message(message.from_user.id, message.message_id)
         except Exception as e:
-            print(f"Error occurred while deleting account: {e}")
+            print(e)
             await bot.delete_message(message.from_user.id, message.message_id)
 
+
+@router.message(F.text, Command("delspam"))
+async def delspam_handler(message: types.Message, context: DbContext):
+    if message.text:
+        try:
+            account_number = message.text.split()[1]
+            await context.del_account(account_number)
+            await bot.delete_message(message.from_user.id, message.message_id)
+        except IndexError:
+            await bot.delete_message(message.from_user.id, message.message_id)
+        except Exception as e:
+            print(e)
+            await bot.delete_message(message.from_user.id, message.message_id)
 
 
 @router.message(F.text, Command("check"))

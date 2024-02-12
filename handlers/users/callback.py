@@ -34,13 +34,21 @@ async def select_lang(callback_query: types.CallbackQuery, context: DbContext):
         generated_code = await context.add_auth_key()
         message = (f'<b>Ключ сгенерирован:</b>\n<code>{generated_code}</code>\n<i>'
                    f'Перешлите данное сообщение пользователю которому хотите дать доступ к боту!</i>')
-        await bot.edit_message_text(
-            text=message,
-            chat_id=callback_query.message.chat.id,
-            message_id=callback_query.message.message_id,
-            reply_markup=await get_gen(telegram_id),
-            parse_mode=ParseMode.HTML
-        )
+        try:
+            await bot.edit_message_text(
+                text=message,
+                chat_id=callback_query.message.chat.id,
+                message_id=callback_query.message.message_id,
+                reply_markup=await get_gen(telegram_id),
+                parse_mode=ParseMode.HTML
+            )
+        except TelegramBadRequest:
+            await bot.send_message(
+                text=message,
+                chat_id=callback_query.message.chat.id,
+                reply_markup=await get_gen(telegram_id),
+                parse_mode=ParseMode.HTML
+            )
     if gen == 'list':
         keys = await context.get_free_auth_keys()
         key_list = 'Список доступных ключей:'
@@ -298,7 +306,10 @@ async def dest_handler(callback_query: types.CallbackQuery, state: FSMContext, c
 async def dest_handler(message: types.Message, state: FSMContext, context: DbContext):
     telegram_id = message.from_user.id
     mes_id = await context.get_message_id(telegram_id)
-    await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     match = re.match(r'.*?/([a-zA-Z0-9_\-@]+)$', message.text)
     if match:
         username = match.group(1)
@@ -324,8 +335,10 @@ async def dest_handler(message: types.Message, state: FSMContext, context: DbCon
 async def target_handler(message: types.Message, state: FSMContext, context: DbContext):
     telegram_id = message.from_user.id
     mes_id = await context.get_message_id(telegram_id)
-    await bot.delete_message(chat_id=telegram_id,
-                             message_id=message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     match = re.match(r'.*?/([a-zA-Z0-9_\-@]+)$', message.text)
     username = match.group(1)
     if match:
@@ -365,7 +378,10 @@ async def port_handler(message: types.Message, state: FSMContext, context: DbCon
     telegram_id = message.from_user.id
     ud = await state.get_data()
     msg_id = ud['tmp_msg_id']
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await context.set_proxy_port(telegram_id, message.text)
     await bot.edit_message_text(text=f'<b>Вы установили порт для прокси:</b>\n\n<pre>{message.text}</pre>',
                                 chat_id=telegram_id,
@@ -380,7 +396,10 @@ async def server_handler(message: types.Message, state: FSMContext, context: DbC
     telegram_id = message.from_user.id
     ud = await state.get_data()
     msg_id = ud['tmp_msg_id']
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await context.set_proxy_server(telegram_id, message.text)
     await bot.edit_message_text(text=f'<b>Вы установили сервер для прокси:</b>\n\n<pre>{message.text}</pre>',
                                 chat_id=telegram_id,
@@ -395,7 +414,10 @@ async def login_handler(message: types.Message, state: FSMContext, context: DbCo
     telegram_id = message.from_user.id
     ud = await state.get_data()
     msg_id = ud['tmp_msg_id']
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await context.set_proxy_login(telegram_id, message.text)
     await bot.edit_message_text(text=f'<b>Вы установили логин для прокси:</b>\n\n<pre>{message.text}</pre>',
                                 chat_id=telegram_id,
@@ -410,7 +432,10 @@ async def password_handler(message: types.Message, state: FSMContext, context: D
     telegram_id = message.from_user.id
     ud = await state.get_data()
     msg_id = ud['tmp_msg_id']
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await context.set_proxy_password(telegram_id, message.text)
     await bot.edit_message_text(text=f'<b>Вы установили пароль для прокси:</b>\n\n<pre>{message.text}</pre>',
                                 chat_id=telegram_id,
@@ -425,11 +450,20 @@ async def device_handler(message: types.Message, state: FSMContext, context: DbC
     telegram_id = message.from_user.id
     ud = await state.get_data()
     msg_id = ud['tmp_msg_id']
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await context.set_device(telegram_id, message.text)
-    await bot.edit_message_text(text=f'<b>Ваше устройство называется:</b>\n\n<pre>{message.text}</pre>',
-                                chat_id=telegram_id,
-                                reply_markup=await get_proxy_settings(context, telegram_id),
-                                message_id=msg_id,
-                                parse_mode=ParseMode.HTML)
+    try:
+        await bot.edit_message_text(text=f'<b>Ваше устройство называется:</b>\n\n<pre>{message.text}</pre>',
+                                    chat_id=telegram_id,
+                                    reply_markup=await get_proxy_settings(context, telegram_id),
+                                    message_id=msg_id,
+                                    parse_mode=ParseMode.HTML)
+    except TelegramBadRequest:
+        await bot.send_message(telegram_id,
+                               '<b>Ваше устройство называется:</b>\n\n<pre>{message.text}</pre>',
+                               parse_mode=ParseMode.HTML,
+                               reply_markup=await get_proxy_settings(context, telegram_id))
     await state.clear()

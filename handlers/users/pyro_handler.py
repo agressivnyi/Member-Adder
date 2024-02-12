@@ -3,6 +3,7 @@ from datetime import timedelta, datetime
 
 from aiogram import Router, types
 from aiogram.enums import ChatAction, ParseMode
+from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
 from hydrogram import Client
 from hydrogram.enums import UserStatus
@@ -11,8 +12,8 @@ from hydrogram.errors import (AuthKeyUnregistered, BadRequest,
                               PhoneCodeExpired, PhoneCodeInvalid,
                               PhoneNumberBanned, PhoneNumberInvalid,
                               SessionPasswordNeeded, Unauthorized, UserPrivacyRestricted, UserDeactivated,
-                              UsernameInvalid, UsernameNotOccupied, UserKicked, UserChannelsTooMuch, PeerFlood,
-                              UserBannedInChannel)
+                              UsernameInvalid, UsernameNotOccupied, UserKicked, PeerFlood,
+                              UserBannedInChannel, InputUserDeactivated)
 from hydrogram.types import User
 
 from data.config import (API_HASH, API_ID, app_version,
@@ -78,7 +79,10 @@ async def get_number(message: types.Message, state: FSMContext, context: DbConte
     telegram_id = message.from_user.id
     access_code = message.text
     mes_id = await context.get_message_id(telegram_id)
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     if await context.activate_auth_key(access_code, telegram_id):
         success_message = (
             "Код активации успешно принят!\n\n"
@@ -100,7 +104,10 @@ async def get_number(message: types.Message, state: FSMContext, context: DbConte
     telegram_id = message.from_user.id
     mes_id = await context.get_message_id(telegram_id)
     number = message.text
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     await bot.send_chat_action(telegram_id, ChatAction.TYPING)
     client = await create_client(number, telegram_id, context)
     try:
@@ -163,7 +170,10 @@ async def get_code(message: types.Message, state: FSMContext, context: DbContext
     await bot.send_chat_action(message.from_user.id, ChatAction.TYPING)
     code = message.text
     telegram_id = message.from_user.id
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     user_data = await state.get_data()
     client = user_data['client']
     number = user_data['phone']
@@ -180,7 +190,10 @@ async def get_code(message: types.Message, state: FSMContext, context: DbContext
                            mes_id,
                            f'Аккаунт успешно добавлен в бот ',
                            await accs_settings(telegram_id))
-            await bot.delete_message(telegram_id, message.message_id)
+            try:
+                await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+            except TelegramBadRequest:
+                pass
 
     except FloodWait:
         await edit_msg(context, telegram_id,
@@ -226,7 +239,10 @@ async def get_code(message: types.Message, state: FSMContext, context: DbContext
 async def get_2fa(message: types.Message, state: FSMContext, context: DbContext):
     telegram_id = message.from_user.id
     await bot.send_chat_action(message.from_user.id, ChatAction.TYPING)
-    await bot.delete_message(telegram_id, message.message_id)
+    try:
+        await bot.delete_message(chat_id=telegram_id, message_id=message.message_id)
+    except TelegramBadRequest:
+        pass
     user_data = await state.get_data()
     client = user_data['client']
     number = user_data['phone']
@@ -272,6 +288,7 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
         return 4
 
     client = clients[number]
+    success_user = 0
     total = len(await context.get_all_accounts())
     bad = len(await context.get_bad_accounts())
     await edit_msg(context, telegram_id, mes_id, f'Запускаю задачу с номера {number}.',
@@ -282,7 +299,8 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
     except (AuthKeyUnregistered, UserDeactivated):
         await context.del_account(number)
         return 4
-    except Exception:
+    except Exception as e:
+        print(e)
         await context.update_account_status('free', number)
         return 1
     try:
@@ -290,7 +308,8 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
     except UserDeactivated:
         await context.del_account(number)
         return 4
-    except Exception:
+    except Exception as e:
+        print(e)
         await context.update_account_status('free', number)
         return 2
     await client.join_chat(dest_chat)
@@ -300,11 +319,18 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
                    f'Начинаю парсинг пользователей из группы @{dest_chat}\n'
                    f"Текущий номер: {number} (Отработано {success} из {total} возможных аккаунтов)\n"
                    f"Количество аккаунтов которые ограничены: {bad}", )
-    members = [member.user.id
+    members_target = [member_tg.user.id
+                      async for member_tg in client.get_chat_members(target_chat_info.id)
+                      if not member_tg.user.is_bot]
+
+    members = [member
                async for member in client.get_chat_members(dest_chat_info.id)
                if not member.user.is_bot
                and member.user.status in [UserStatus.LAST_MONTH, UserStatus.LONG_AGO]
-               and not member.user.is_deleted]
+               and not member.user.is_deleted
+               and not await context.get_blacklist(member.user.id)
+               and member.user.id not in members_target]
+
     await edit_msg(context,
                    telegram_id, mes_id,
                    f'Пробую запустить процесс добавления из группы @{dest_chat} в группу @{target_chat}\n'
@@ -313,23 +339,33 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
     for member in members:
         try:
             await asyncio.sleep(5)
-            added = await client.add_chat_members(target_chat_info.id, member)
-            if added:
+            added = await target_chat_info.add_members(member.user.id)
+            if added is True:
+                success_user += 1
                 await edit_msg(context,
                                telegram_id, mes_id,
-                               f'Добавил пользователя {member} в группу @{target_chat}\n'
+                               f'Добавил пользователя {member.user.first_name} ({member.user.id}) '
+                               f'в группу @{target_chat}\n'
+                               f"Добавлено всего: {success_user}"
                                f"Текущий номер: {number} (Отработано {success} из {total} возможных аккаунтов)\n"
                                f"Количество аккаунтов которые ограничены: {bad}", )
+
         except FloodWait as e:
             restriction_time = datetime.now() + timedelta(seconds=e.value)
-            await context.update_account_status_time('bad', restriction_time, number)
+            await context.update_account_status_time('flood', restriction_time, number)
             return 4
         except PeerFlood:
             await context.update_account_status('free', number)
             return 4
-        except (UserChannelsTooMuch, UserPrivacyRestricted, UsernameInvalid, UsernameNotOccupied, UserKicked) as e:
+        except UserBannedInChannel:
+            await context.update_account_status('spam', number)
+            return 4
+        except UserPrivacyRestricted:
+            await context.add_blacklist(member.user.id)
             pass
-        except (AuthKeyUnregistered, UserDeactivated, UserBannedInChannel):
+        except (InputUserDeactivated, UsernameInvalid, UsernameNotOccupied, UserKicked):
+            pass
+        except (AuthKeyUnregistered, UserDeactivated):
             await context.del_account(number)
             return 4
 
@@ -350,8 +386,8 @@ async def edit_msg(context: DbContext, chat_id, message_id, msg, kbd=None, callb
             reply_markup=reply_markup,
             parse_mode=ParseMode.HTML
         )
-    except Exception as e:
-        print(e)
+    except TelegramBadRequest:
+        await bot.send_message(chat_id, msg, parse_mode=ParseMode.HTML, reply_markup=reply_markup)
 
 
 async def task_handler(context: DbContext, telegram_id: int, message_id: int, source: str, target: str):
@@ -367,6 +403,7 @@ async def task_handler(context: DbContext, telegram_id: int, message_id: int, so
             if status is False:
                 break
             add_status = await add_member(context, number, source, target, message_id, telegram_id, success_count)
+            success_count += 1
             if add_status == 1:
                 await context.update_task_status(telegram_id, False)
                 await edit_msg(context, telegram_id, message_id, 'Ссылка откуда будем '

@@ -6,7 +6,7 @@ from aiogram.client.session.middlewares.request_logging import logger
 from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from utils.db.models import AuthKey, User, Accounts
+from utils.db.models import AuthKey, User, Accounts, Blacklist
 
 
 def generate_key():
@@ -109,8 +109,10 @@ class DbContext:
             elif status == 'flood':
                 await self.check_restriction_time(account)
                 status = 'ограничен'
-            result += f"<b>{number}</b>  <i>{status}</i>  <i>{formatted_time}</i>\n "
-
+            elif status == 'spam':
+                await self.check_restriction_time(account)
+                status = 'в спаме'
+            result += f"<b>{number}</b>  <i>{status}</i> {'до <i>' + formatted_time if formatted_time else ''}</i>\n"
         if len(result) == len("Список\n"):
             return "<b>Вы ещё не добавили</b>"
         else:
@@ -121,6 +123,19 @@ class DbContext:
             return False
         else:
             query = Accounts(hash_value=hash_value, number=number)
+            self.session.add(query)
+            try:
+                await self.session.commit()
+            except Exception as e:
+                logger.exception(e)
+                return False
+            return True
+
+    async def add_blacklist(self, telegram_id: int):
+        if await self.blacklist_exists(telegram_id):
+            return False
+        else:
+            query = Blacklist(telegram_id=telegram_id)
             self.session.add(query)
             try:
                 await self.session.commit()
@@ -144,6 +159,11 @@ class DbContext:
 
     async def get_account(self, number: str):
         statement = select(Accounts).filter_by(number=number)
+        result = await self.session.scalars(statement)
+        return result.first()
+
+    async def get_blacklist(self, telegram_id: int):
+        statement = select(Blacklist).filter_by(telegram_id=telegram_id)
         result = await self.session.scalars(statement)
         return result.first()
 
@@ -196,6 +216,9 @@ class DbContext:
 
     async def session_exists(self, number):
         return bool(await self.get_account(number))
+
+    async def blacklist_exists(self, telegram_id: int):
+        return bool(await self.get_blacklist(telegram_id))
 
     async def check_restriction_time(self, number):
         account = await self.get_account(number)
