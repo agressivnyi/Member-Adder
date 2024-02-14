@@ -1,4 +1,4 @@
-from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, BigInteger, DateTime
+from sqlalchemy import Boolean, Column, ForeignKey, Integer, String, BigInteger
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship
 
@@ -41,7 +41,7 @@ class Accounts(Base):
     number = Column(String(255), nullable=False, unique=True)
     hash_value = Column(String(255), nullable=False)
     status = Column(String(255), default='free')
-    restriction_time = Column(DateTime, default=None)
+    restriction_time = Column(String(255), default=None)
 
 
 class Blacklist(Base):

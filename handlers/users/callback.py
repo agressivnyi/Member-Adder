@@ -8,7 +8,7 @@ from aiogram.fsm.context import FSMContext
 
 from data.config import ADMINS
 from filters import IsBotAdminFilter
-from handlers.users.pyro_handler import task_handler
+from handlers.users.handler import task_handler
 from keyboards.inline.buttons import (get_admin, get_gen,
                                       get_help, get_main, get_menu,
                                       get_profile, get_settings, accs_settings, get_proxy_settings)

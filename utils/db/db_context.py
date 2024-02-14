@@ -98,10 +98,8 @@ class DbContext:
         statement = select(Accounts.number, Accounts.status, Accounts.restriction_time)
         accounts = await self.session.execute(statement)
         result = "Список:\n"
-
         for account in accounts:
             number, status, restriction_time = account
-            formatted_time = restriction_time.strftime('%Y-%m-%d %H:%M:%S') if restriction_time else ""
             if status == 'free':
                 status = 'не используется (свободен)'
             elif status == 'active':
@@ -112,7 +110,7 @@ class DbContext:
             elif status == 'spam':
                 await self.check_restriction_time(account)
                 status = 'в спаме'
-            result += f"<b>{number}</b>  <i>{status}</i> {formatted_time}\n"
+            result += f"<b>{number}</b>  <i>{status}</i>\n"
         if len(result) == len("<b>Список</b>\n\n"):
             return "<b>Вы ещё не добавили</b>"
         else:
@@ -159,8 +157,8 @@ class DbContext:
 
     async def get_account(self, number: str):
         statement = select(Accounts).filter_by(number=number)
-        result = await self.session.scalars(statement)
-        return result.first()
+        result = await self.session.execute(statement)
+        return result.scalars().first()
 
     async def get_blacklist(self, telegram_id: int):
         statement = select(Blacklist).filter_by(telegram_id=telegram_id)
