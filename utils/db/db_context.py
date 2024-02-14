@@ -100,17 +100,24 @@ class DbContext:
         result = "Список:\n"
         for account in accounts:
             number, status, restriction_time = account
+
             if status == 'free':
-                status = 'не используется (свободен)'
+                status = 'свободен'
             elif status == 'active':
                 status = 'используется'
-            elif status == 'flood':
-                await self.check_restriction_time(account)
-                status = 'ограничен'
-            elif status == 'spam':
-                await self.check_restriction_time(account)
-                status = 'в спаме'
-            result += f"<b>{number}</b>  <i>{status}</i>\n"
+            elif status in ['flood', 'spam']:
+                if not restriction_time:
+                    await self.check_restriction_time(number)
+                if status == 'flood':
+                    status = 'ограничен'
+                elif status == 'spam':
+                    status = 'в спаме'
+
+            result += f"<b>{str(number)}</b>  <i>{str(status)}</i>"
+            if restriction_time:
+                result += f" ограничен до {restriction_time}\n"
+            else:
+                result += "\n"
         if len(result) == len("<b>Список</b>\n\n"):
             return "<b>Вы ещё не добавили</b>"
         else:
@@ -218,7 +225,7 @@ class DbContext:
     async def blacklist_exists(self, telegram_id: int):
         return bool(await self.get_blacklist(telegram_id))
 
-    async def check_restriction_time(self, number):
+    async def check_restriction_time(self, number: str):
         account = await self.get_account(number)
         if account:
             current_time = datetime.now()

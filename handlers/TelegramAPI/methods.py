@@ -1,5 +1,8 @@
+import logging
+from datetime import datetime, timedelta
+
 from hydrogram import Client
-from hydrogram.enums import UserStatus, ChatType
+from hydrogram.enums import ChatType
 from hydrogram.errors import (ChannelsTooMuch, InviteRequestSent, UserAlreadyParticipant, ChannelInvalid,
                               ChannelPrivate,
                               ChatInvalid, InviteHashEmpty, InviteHashExpired, InviteHashInvalid, MsgIdInvalid,
@@ -8,7 +11,8 @@ from hydrogram.errors import (ChannelsTooMuch, InviteRequestSent, UserAlreadyPar
                               UserNotParticipant,
                               AuthKeyUnregistered, UserDeactivated, ChatIdInvalid, Unauthorized, UserPrivacyRestricted,
                               UserIdInvalid, UserNotMutualContact, UserKicked, InputUserDeactivated, UserBlocked,
-                              UserBot, ChatWriteForbidden, BotGroupsBlocked, BotsTooMuch, ChatAdminRequired, FloodWait)
+                              UserBot, ChatWriteForbidden, BotGroupsBlocked, BotsTooMuch, ChatAdminRequired, FloodWait,
+                              PeerFlood)
 
 from data.config import API_HASH, API_ID, system_version, app_version
 
@@ -26,6 +30,7 @@ InviteUpdates = (BotsTooMuch, BotGroupsBlocked, ChannelInvalid, ChannelPrivate, 
                  UserPrivacyRestricted)
 clients = {}
 total_users = {}
+logging.basicConfig(filename='hydrolog.txt', level=logging.ERROR, format='%(asctime)s %(levelname)s: %(message)s')
 
 
 async def create_client(number, telegram_id, context):
@@ -68,8 +73,9 @@ async def create_client(number, telegram_id, context):
         await client.connect()
         clients[number] = client
         return client
-    except (Unauthorized, UserDeactivated):
+    except (Unauthorized, UserDeactivated) as e:
         await context.del_account(number)
+        logging.exception(f"[{number}]Ошибка: %s", e)
         return None
 
 
@@ -79,6 +85,7 @@ async def join_channel(client, chat_id):
         if joined is True:
             return True
     except JoinChannelUpdates as e:
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
         return JoinChannelUpdates.index(type(e))
     except BadUpdates:
         return False
@@ -90,57 +97,48 @@ async def leave_channel(client, chat_id):
         if leaved is True:
             return True
     except LeaveChannelUpdates as e:
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
         return LeaveChannelUpdates.index(type(e))
     except BadUpdates:
         return False
 
 
-async def get_chat_info(client, chat):
+async def get_chat_info(client, chat_id):
     try:
-        details = await client.get_chat(chat)
+        details = await client.get_chat(chat_id)
         if details.type == ChatType.GROUP or details.type == ChatType.SUPERGROUP:
             is_chat = True
         else:
             is_chat = False
-        members_count = details.chat.members_count
-        invite_allowed: bool = details.invite_allowed
+        members_count = details.members_count
+        invite_allowed: bool = details.permissions.can_invite_users
         restricted = bool(details.is_restricted)
-        chat_id = details.chat.id
-        return chat_id, is_chat, restricted, invite_allowed, members_count
-    except (ChatIdInvalid, PeerIdInvalid):
+        group_id = details.id
+        return group_id, is_chat, restricted, invite_allowed, members_count
+    except (ChatIdInvalid, PeerIdInvalid) as e:
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
         return None, None, None, None, None
     except BadUpdates:
         return False, False, False, False, False
 
 
-async def add_member_method(client, chat_id, group):
+async def add_member_method(context, client, phone, chat_id, group):
     try:
         added = await client.add_chat_members(group, chat_id)
         if added is True:
             return True
     except InviteUpdates as e:
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
         return InviteUpdates.index(type(e))
-    except BadUpdates:
+    except BadUpdates as e:
+        await context.del_account(phone)
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
         return False
     except FloodWait as e:
-        return e.value
-
-
-async def fetch_members(context, client, source, target):
-    members_target = [
-        member_tg.user.id
-        async for member_tg in client.get_chat_members(target)
-        if not member_tg.user.is_bot
-    ]
-    valid_members = []
-    async for member in client.get_chat_members(source):
-        is_valid_member = (
-                not member.user.is_bot
-                and member.user.status in [UserStatus.LAST_MONTH, UserStatus.LONG_AGO]
-                and not member.user.is_deleted
-                and not await context.get_blacklist(member.user.id)
-                and member.user.id not in members_target
-        )
-        if is_valid_member:
-            valid_members.append(member)
-        return valid_members
+        restriction_time = datetime.now() + timedelta(seconds=int(e.value))
+        await context.update_account_status_time('flood', restriction_time, phone)
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
+        return False
+    except PeerFlood as e:
+        logging.exception(f"[{chat_id}]Ошибка: %s", e)
+        return False

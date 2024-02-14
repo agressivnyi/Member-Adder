@@ -1,10 +1,10 @@
 import asyncio
-from datetime import timedelta, datetime
 
 from aiogram import Router, types
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
+from hydrogram.enums import UserStatus
 from hydrogram.errors import (AuthKeyUnregistered, BadRequest,
                               FloodWait, NotAcceptable,
                               PhoneCodeExpired, PhoneCodeInvalid,
@@ -12,7 +12,7 @@ from hydrogram.errors import (AuthKeyUnregistered, BadRequest,
                               SessionPasswordNeeded, Unauthorized, UserDeactivated)
 from hydrogram.types import User
 
-from handlers.TelegramAPI.methods import fetch_members, create_client, clients, get_chat_info, add_member_method, \
+from handlers.TelegramAPI.methods import create_client, clients, get_chat_info, add_member_method, \
     total_users, join_channel
 from keyboards.inline.buttons import get_main, accs_settings, get_menu
 from keyboards.inline.cancel import cancel_back_kb
@@ -256,90 +256,106 @@ async def add_member(context: DbContext, number, dest_chat, target_chat, mes_id,
         return 7
 
     client = clients[number]
-    if total_users[telegram_id]:
-        total_success = total_users[telegram_id]
-    else:
-        total_users[telegram_id] = total_users
     success_user = 0
     total = len(await context.get_all_accounts())
     bad = len(await context.get_bad_accounts())
+    status = await context.get_task_status(telegram_id)
     await edit_msg(context, telegram_id, mes_id, f'Запускаю задачу с номера {number}.',
                    kbd=await get_menu(context, telegram_id))
-    await edit_msg(context,
-                   telegram_id, mes_id,
-                   f'Начинаю парсинг пользователей из группы @{dest_chat}\n'
-                   f"Текущий номер: {number}  b(Отработано {success} из {total} возможных аккаунтов)\n"
-                   f"Количество аккаунтов которые ограничены: {bad}", )
     s_chat_id, s_is_chat, s_restricted, s_invite_allowed, s_members_count = await get_chat_info(client, dest_chat)
     t_chat_id, t_is_chat, t_restricted, t_invite_allowed, t_members_count = await get_chat_info(client, target_chat)
-    joined = join_channel(client, t_chat_id)
+    joined = await join_channel(client, t_chat_id)
     if joined is False:
         await context.del_account(number)
         return 7
-    if not s_is_chat and not t_is_chat:
+    if s_is_chat is False and t_is_chat is False:
         return 6
-    if not s_restricted:
+    if s_restricted is True:
+        await context.update_account_status('free', number)
+        return 6
+    if status is False:
+        return False
+    await edit_msg(context,
+                   telegram_id, mes_id,
+                   f'<b>Статус:</b>\n'
+                   f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n\n'
+                   f'<b>Начинаю парсинг пользователей с группы </b> @{dest_chat}\n'
+                   f'<b>Добавлено в текущем аккаунте:</b> <u>{success_user}</u> пользователей.\n'
+                   f'<b>Всего добавлено в группу </b> <u>{total_users[telegram_id]}</u> пользователей.'
+                   f'\n'
+                   f'<b>Всего аккаунтов использовано:</b> <u>{success}</u> из <u>{total}</u> возможных'
+                   f'\n'
+                   f'<b>Ограничено (Находятся в флуде):</b> {bad}')
+
+    members_target = [
+        member_tg.user.id
+        async for member_tg in client.get_chat_members(target_chat)
+        if not member_tg.user.is_bot
+    ]
+    members = [
+        member
+        async for member in client.get_chat_members(dest_chat)
+        if not member.user.is_bot and member.user.status in [UserStatus.LAST_MONTH, UserStatus.LONG_AGO]
+           and not member.user.is_deleted and not await context.get_blacklist(member.user.id)
+           and member.user.id not in members_target]
+    if members:
         await edit_msg(context,
                        telegram_id, mes_id,
-                       f'Начинаю парсинг пользователей из группы @{dest_chat} (ID: {s_chat_id})\n'
-                       f"Текущий номер: {number} (Отработано {success} из {total} возможных аккаунтов)\n"
-                       f"Количество аккаунтов которые ограничены: {bad}", )
-
-        if s_members_count >= 1000:
-            members = await fetch_members(context, client, dest_chat, target_chat)
-        else:
-            members = []
-        if members:
-            await edit_msg(context,
-                           telegram_id, mes_id,
-                           f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n'
-                           f'Спарсил из группы @{dest_chat} {len(members)} участников из {s_members_count} '
-                           f'возможных')
-            await asyncio.sleep(2)
-            await edit_msg(context,
-                           telegram_id, mes_id,
-                           f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n'
-                           f'В группе @{target_chat} {t_members_count} участников в данный момент')
-            if t_invite_allowed:
-                for member in members:
-                    await asyncio.sleep(5)
-                    added = await add_member_method(client, s_chat_id, member)
-                    if added is False:
-                        await context.del_account(number)
-                        return 7
-                    if added is True:
-                        total_success += 1
-                        success_user += 1
-                        await edit_msg(context,
-                                       telegram_id, mes_id,
-                                       f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n'
-                                       f'Добавил пользователя (ID: {member} в группу @{target_chat} из группы '
-                                       f'@{dest_chat}\n'
-                                       f'Добавлено в текущем аккаунте {success_user} пользователей. '
-                                       f'(Общее {total_success})'
-                                       f'Всего аккаунтов использовано {success} из {total} возможных({bad} ограничены)')
-                    elif added == (0, 1, 7, 9, 13, 14, 15, 16, 17):
-                        pass
-                    elif added == (2, 3, 4, 5, 6, 11):
-                        await context.update_account_status('free', number)
-                        return 6
-                    elif added == 10:
-                        await context.update_account_status('spam', number)
-                        return 7
-                    elif added >= 1000:
-                        restriction_time = datetime.now() + timedelta(seconds=int(added))
-                        await context.update_account_status_time('flood', restriction_time, number)
-                        return 7
-            else:
-                await context.update_account_status('free', number)
-                return 4
+                       f'<b>Статус:</b>\n'
+                       f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n\n'
+                       '<b>Инфо:</b>\n'
+                       f'<b>Целевая группа:</b>\n'
+                       f'<b>USERNAME:</b> <a href="https://t.me/{dest_chat}">{dest_chat}</a>\n'
+                       f'<b>ID группы:</b> {s_chat_id}\n'
+                       f'<b>Количество участников:</b> {s_members_count} (<u>спарсено: {len(members)}</u>)'
+                       '\n\n'
+                       f'<b>Конечная группа:</b>\n'
+                       f'<b>USERNAME:</b> <a href="https://t.me/{target_chat}">{target_chat}</a>\n'
+                       f'<b>ID группы:</b> {t_chat_id}\n'
+                       f'<b>Количество участников:</b> {t_members_count+total_users[telegram_id]}\n')
+        if t_invite_allowed is True:
+            for member in members:
+                if status is False:
+                    return False
+                await asyncio.sleep(5)
+                added = await add_member_method(context, client, number, member.user.id, t_chat_id)
+                if added is False:
+                    await context.del_account(number)
+                    return 7
+                if added is True:
+                    total_users[telegram_id] += 1
+                    success_user += 1
+                    await edit_msg(context,
+                                   telegram_id, mes_id,
+                                   f'Успешно добавлен пользователь:\n'
+                                   f'ФИО: {member.user.full_name}\n'
+                                   f'ID: {member.user.id}\n'
+                                   f'USERNAME: @{member.user.username}\n'
+                                   f'\n'
+                                   f'Откуда: @{target_chat}\n'
+                                   f'Куда: @{dest_chat}\n\n'
+                                   f'<b>Статус:</b>\n'
+                                   f'<b>Текущий номер:</b> <a href="https://t.me/{number}">{number}</a>\n'
+                                   f'<b>Добавлено в текущем аккаунте:</b> <u>{success_user}</u> пользователей.\n'
+                                   f'<b>Всего добавлено в группу </b> <u>{total_users[telegram_id]}</u> пользователей.'
+                                   f'\n'
+                                   f'<b>Всего аккаунтов использовано:</b> <u>{success}</u> из <u>{total}</u> возможных'
+                                   f'\n'
+                                   f'<b>Ограничено (Находятся в флуде):</b> {bad}')
+                elif (added == 0 or added == 1 or added == 7 or added == 9 or added == 13 or added == 14 or added == 15
+                      or added == 16 or added == 17):
+                    pass
+                elif added == 2 or added == 3 or added == 4 or added == 5 or added == 6 or added == 11:
+                    await context.update_account_status('free', number)
+                    return 6
+                elif added is False:
+                    return 7
         else:
             await context.update_account_status('free', number)
-            return 5
-
+            return 4
     else:
         await context.update_account_status('free', number)
-        return
+        return 5
 
 
 async def task_handler(context: DbContext, telegram_id: int, message_id: int, source: str, target: str):
@@ -352,11 +368,17 @@ async def task_handler(context: DbContext, telegram_id: int, message_id: int, so
             await edit_msg(context, telegram_id, message_id, 'Нет доступных аккаунтов, добавьте пожалуйста')
             break
         for number in numbers:
+            if telegram_id not in total_users:
+                total_users[telegram_id] = 0
             if status is False:
+                if total_users[telegram_id]:
+                    del total_users[telegram_id]
                 break
             add_status = await add_member(context, number, source, target, message_id, telegram_id, success_count)
             success_count += 1
-            if add_status == 6:
+            if add_status is False:
+                break
+            elif add_status == 6:
                 await context.update_task_status(telegram_id, False)
                 await edit_msg(context, telegram_id, message_id, 'Целевая ссылка/Конечная ссылка не являются группой',
                                await get_menu(context, telegram_id))
