@@ -1,9 +1,9 @@
 import logging
 from datetime import datetime, timedelta
 
-from hydrogram import Client
-from hydrogram.enums import ChatType
-from hydrogram.errors import (ChannelsTooMuch, InviteRequestSent, UserAlreadyParticipant, ChannelInvalid,
+from pyrogram import Client
+from pyrogram.enums import ChatType
+from pyrogram.errors import (ChannelsTooMuch, InviteRequestSent, UserAlreadyParticipant, ChannelInvalid,
                               ChannelPrivate,
                               ChatInvalid, InviteHashEmpty, InviteHashExpired, InviteHashInvalid, MsgIdInvalid,
                               PeerIdInvalid, UsersTooMuch,
