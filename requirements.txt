@@ -1,5 +1,5 @@
 environs
 SQLAlchemy
 aiogram
-Hydrogram
+https://github.com/KurimuzonAkuma/pyrogram/archive/dev.zip
 TgCrypto

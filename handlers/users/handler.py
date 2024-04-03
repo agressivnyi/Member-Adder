@@ -4,13 +4,13 @@ from aiogram import Router, types
 from aiogram.enums import ChatAction, ParseMode
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.fsm.context import FSMContext
-from hydrogram.enums import UserStatus
-from hydrogram.errors import (AuthKeyUnregistered, BadRequest,
+from pyrogram.enums import UserStatus
+from pyrogram.errors import (AuthKeyUnregistered, BadRequest,
                               FloodWait, NotAcceptable,
                               PhoneCodeExpired, PhoneCodeInvalid,
                               PhoneNumberBanned, PhoneNumberInvalid,
                               SessionPasswordNeeded, Unauthorized, UserDeactivated)
-from hydrogram.types import User
+from pyrogram.types import User
 
 from handlers.TelegramAPI.methods import create_client, clients, get_chat_info, add_member_method, \
     total_users, join_channel
